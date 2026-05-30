@@ -217,6 +217,37 @@ function Cell.SetEnabled(isEnabled, ...)
     end
 end
 
+--[[
+function Cell.SetEnabled(isEnabled, ...)
+    for _, w in pairs({...}) do
+        if w:IsObjectType("FontString") then
+            if isEnabled then
+                w:SetTextColor(1, 1, 1, 1)
+            else
+                w:SetTextColor(0.4, 0.4, 0.4, 1)
+            end
+        elseif w:IsObjectType("Texture") then
+            if isEnabled then
+                w:SetDesaturated(false)
+            else
+                w:SetDesaturated(true)
+            end
+        elseif w.SetEnabled then
+            w:SetEnabled(isEnabled)
+        elseif w.Enable and w.Disable then
+            if isEnabled then
+                w:Enable()
+            else
+                w:Disable()
+            end
+        elseif isEnabled then
+            w:Show()
+        else
+            w:Hide()
+        end
+    end
+end
+]]
 -----------------------------------------
 -- rainbow text
 -----------------------------------------
@@ -652,11 +683,11 @@ function Cell.CreateButton(parent, text, buttonColor, size, noBorder, noBackgrou
         b.tex = b:CreateTexture(nil, "ARTWORK")
         b.tex:SetPoint(unpack(point))
         b.tex:SetSize(unpack(texSize))
-        if isAtlas then
-            b.tex:SetAtlas(tex)
-        else
-            b.tex:SetTexture(tex)
-        end
+		if isAtlas and b.tex.SetAtlas then
+			b.tex:SetAtlas(tex)
+		else
+			b.tex:SetTexture(tex)
+		end
         -- update fontstring point
         if s then
             s:ClearAllPoints()
@@ -1051,7 +1082,18 @@ function Cell.CreateEditBox(parent, width, height, isTransparent, isMultiLine, i
     eb:SetScript("OnEditFocusLost", function() eb:HighlightText(0, 0) end)
     eb:SetScript("OnDisable", function() eb:SetTextColor(0.4, 0.4, 0.4, 1) end)
     eb:SetScript("OnEnable", function() eb:SetTextColor(1, 1, 1, 1) end)
+	
+	function eb:SetEnabled(enabled)
+		self:EnableMouse(enabled)
+		self:EnableKeyboard(enabled)
 
+		if enabled then
+			self:SetTextColor(1, 1, 1, 1)
+		else
+			self:SetTextColor(0.4, 0.4, 0.4, 1)
+			self:ClearFocus()
+		end
+	end
     eb.AddConfirmButton = EditBox_AddConfirmButton
 
     return eb
