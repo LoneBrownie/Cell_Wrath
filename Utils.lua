@@ -1227,14 +1227,26 @@ end
 function F.GetClassColorStr(class)
     local token = NormalizeClassToken(class)
     if token and RAID_CLASS_COLORS[token] then
+        local color
         if CUSTOM_CLASS_COLORS and CUSTOM_CLASS_COLORS[token] then
-            return "|c"..CUSTOM_CLASS_COLORS[token].colorStr
+            color = CUSTOM_CLASS_COLORS[token]
         else
-            return "|c"..RAID_CLASS_COLORS[token].colorStr
+            color = RAID_CLASS_COLORS[token]
         end
-    else
-        return "|cffffffff"
+
+        if color.colorStr then
+            return "|c" .. color.colorStr
+        else
+            return string.format(
+                "|cff%02x%02x%02x",
+                color.r * 255,
+                color.g * 255,
+                color.b * 255
+            )
+        end
     end
+
+    return "|cffffffff"
 end
 
 function F.GetUnitClassColor(unit, class, guid)
