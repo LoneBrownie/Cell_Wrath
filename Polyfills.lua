@@ -1136,10 +1136,16 @@ end
 
 if not C_Spell.GetSpellCooldown then
     function C_Spell.GetSpellCooldown(spellId)
-        -- Old API: start, duration, enabled
+	    -- Old API: start, duration, enabled
         -- Retail C_Spell: start, duration, enabled, modRate
         local start, duration, enabled = GetSpellCooldown(spellId)
-        return start, duration, enabled, 1
+
+        return {
+            startTime = start,
+            duration = duration,
+            isEnabled = enabled,
+            modRate = 1,
+        }
     end
 end
 
