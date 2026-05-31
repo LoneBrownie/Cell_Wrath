@@ -243,7 +243,7 @@ function SR:CHAT_MSG_WHISPER(text, playerName, languageName, channelName, player
 end
 
 --! hide on applied
-function SR:COMBAT_LOG_EVENT_UNFILTERED(_, event, _, sourceGUID, sourceName, sourceFlags, _, destGUID, destName, destFlags, _, buffId)
+function SR:COMBAT_LOG_EVENT_UNFILTERED(timestamp, event, sourceGUID, sourceName, sourceFlags, destGUID, destName, destFlags, buffId, spellName, spellSchool, auraType)
     if event == "SPELL_AURA_APPLIED" or event == "SPELL_AURA_REFRESH" then
         local unit = Cell.vars.guids[destGUID]
         if unit and srUnits[unit] == buffId then
