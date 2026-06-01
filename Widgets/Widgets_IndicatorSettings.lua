@@ -39,6 +39,32 @@ local font_class_title_name = strupper(addonName).."_FONT_CLASS_TITLE"
 local font_class_name = strupper(addonName).."_FONT_CLASS"
 
 -----------------------------------------
+local function SetWidgetEnabled(widget, enabled)
+	if not widget then return end
+
+	if widget.SetEnabled then
+		widget:SetEnabled(enabled)
+		return
+	end
+
+	if widget.EnableMouse then
+		widget:EnableMouse(enabled)
+	end
+
+	if widget.SetAlpha then
+		widget:SetAlpha(enabled and 1 or 0.5)
+	end
+
+	if widget.ClearFocus and not enabled then
+		widget:ClearFocus()
+	end
+
+	if widget.SetChecked and not enabled then
+		widget:SetChecked(false)
+	end
+end
+
+-----------------------------------------
 -- indicator settings widgets
 -----------------------------------------
 local settingWidgets = {} -- store all created widgets
@@ -1073,46 +1099,35 @@ local function CreateSetting_HealthFormat(parent)
         local shield = 65535
         local healAbsorb = 88127
 
-        local function UpdateWidgets()
-            local health1Enabled = widget.format.health1.format ~= "none"
-            widget.health1HideIfEmptyOrFullCB:SetEnabled(health1Enabled)
-            widget.health1ColorDropdown:SetEnabled(health1Enabled)
-            widget.health1ColorPicker:SetEnabled(health1Enabled)
+local function UpdateWidgets()
+    local health1Enabled = widget.format.health1.format ~= "none"
+    SetWidgetEnabled(widget.health1HideIfEmptyOrFullCB, health1Enabled)
+    SetWidgetEnabled(widget.health1ColorDropdown, health1Enabled)
+    SetWidgetEnabled(widget.health1ColorPicker, health1Enabled)
 
-            local health2Enabled = widget.format.health2.format ~= "none"
-            widget.health2DelimiterEB:SetEnabled(health2Enabled)
-            widget.health2DelimiterEB.confirmBtn:Hide()
-            widget.health2HideIfEmptyOrFullCB:SetEnabled(health2Enabled)
-            widget.health2ColorDropdown:SetEnabled(health2Enabled)
-            widget.health2ColorPicker:SetEnabled(health2Enabled)
-            if health2Enabled then
-                widget.health2DelimiterText:SetTextColor(1, 1, 1)
-            else
-                widget.health2DelimiterText:SetTextColor(0.4, 0.4, 0.4)
-            end
+    local health2Enabled = widget.format.health2.format ~= "none"
+    SetWidgetEnabled(widget.health2DelimiterEB, health2Enabled)
+    widget.health2DelimiterEB.confirmBtn:Hide()
+    SetWidgetEnabled(widget.health2HideIfEmptyOrFullCB, health2Enabled)
+    SetWidgetEnabled(widget.health2ColorDropdown, health2Enabled)
+    SetWidgetEnabled(widget.health2ColorPicker, health2Enabled)
+    widget.health2DelimiterText:SetTextColor(health2Enabled and 1 or 0.4, health2Enabled and 1 or 0.4, health2Enabled and 1 or 0.4)
 
-            local shieldEnabled = widget.format.shields.format ~= "none"
-            widget.shieldDelimiterEB:SetEnabled(shieldEnabled)
-            widget.shieldDelimiterEB.confirmBtn:Hide()
-            widget.shieldColorDropdown:SetEnabled(shieldEnabled)
-            widget.shieldColorPicker:SetEnabled(shieldEnabled)
-            if shieldEnabled then
-                widget.shieldDelimiterText:SetTextColor(1, 1, 1)
-            else
-                widget.shieldDelimiterText:SetTextColor(0.4, 0.4, 0.4)
-            end
+    local shieldEnabled = widget.format.shields.format ~= "none"
+    SetWidgetEnabled(widget.shieldDelimiterEB, shieldEnabled)
+    widget.shieldDelimiterEB.confirmBtn:Hide()
+    SetWidgetEnabled(widget.shieldColorDropdown, shieldEnabled)
+    SetWidgetEnabled(widget.shieldColorPicker, shieldEnabled)
+    widget.shieldDelimiterText:SetTextColor(shieldEnabled and 1 or 0.4, shieldEnabled and 1 or 0.4, shieldEnabled and 1 or 0.4)
 
-            local healAbsorbEnabled = widget.format.healAbsorbs.format ~= "none"
-            widget.healAbsorbDelimiterEB:SetEnabled(healAbsorbEnabled)
-            widget.healAbsorbDelimiterEB.confirmBtn:Hide()
-            widget.healAbsorbColorDropdown:SetEnabled(healAbsorbEnabled)
-            widget.healAbsorbColorPicker:SetEnabled(healAbsorbEnabled)
-            if healAbsorbEnabled then
-                widget.healAbsorbDelimiterText:SetTextColor(1, 1, 1)
-            else
-                widget.healAbsorbDelimiterText:SetTextColor(0.4, 0.4, 0.4)
-            end
-        end
+    local healAbsorbEnabled = widget.format.healAbsorbs.format ~= "none"
+    SetWidgetEnabled(widget.healAbsorbDelimiterEB, healAbsorbEnabled)
+    widget.healAbsorbDelimiterEB.confirmBtn:Hide()
+    SetWidgetEnabled(widget.healAbsorbColorDropdown, healAbsorbEnabled)
+    SetWidgetEnabled(widget.healAbsorbColorPicker, healAbsorbEnabled)
+    widget.healAbsorbDelimiterText:SetTextColor(healAbsorbEnabled and 1 or 0.4, healAbsorbEnabled and 1 or 0.4, healAbsorbEnabled and 1 or 0.4)
+end
+
 
         local function GetItems(which, list)
             local items = {}
@@ -6851,7 +6866,6 @@ function Cell.CreateIndicatorSettings(parent, settingsTable)
         w:ClearAllPoints()
     end
 
-    -- return and show
     for _, setting in pairs(settingsTable) do
         if builders[setting] then
             tinsert(widgetsTable, builders[setting](parent))
@@ -6880,11 +6894,23 @@ function Cell.CreateIndicatorSettings(parent, settingsTable)
             tinsert(widgetsTable, CreateSetting_Auras(parent, 1))
         elseif setting == "auras2" or setting == "bigDebuffs" then
             tinsert(widgetsTable, CreateSetting_Auras(parent, 2))
-        -- elseif setting == "cleuAuras" then
-        --     tinsert(widgetsTable, CreateSetting_CleuAuras(parent))
-        else -- tips
-            tinsert(widgetsTable, CreateSetting_Tips(parent, setting))
-        end
+		else
+			if type(setting) == "string" then
+				local tipKey = string.match(setting, "^tip:(.+)")
+
+				if tipKey then
+					if Cell.indicatorTips and Cell.indicatorTips[tipKey] then
+						setting = Cell.indicatorTips[tipKey]()
+					else
+						setting = ""
+						print("Missing tip:", tipKey)
+					end
+				end
+			end
+			if setting ~= "" then
+				tinsert(widgetsTable, CreateSetting_Tips(parent, setting))
+			end
+		end
     end
 
     return widgetsTable
