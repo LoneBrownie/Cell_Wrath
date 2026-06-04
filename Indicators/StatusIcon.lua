@@ -24,7 +24,6 @@ end
 local rez = {}
 local soulstones = {}
 local SOULSTONE = F.GetSpellInfo(20707)
-local RESURRECTING = F.GetSpellInfo(160029)
 
 local cleuFrame = CreateFrame("Frame")
 cleuFrame:SetScript("OnEvent", function(_, event, ...)
@@ -38,9 +37,6 @@ cleuFrame:SetScript("OnEvent", function(_, event, ...)
             C_Timer.After(0.1, function()
                 soulstones[destGUID] = nil
             end)
-        elseif spellName == RESURRECTING then
-            rez[destGUID] = nil
-            F.HandleUnitButton("guid", destGUID, I.UpdateStatusIcon_Resurrection)
         end
     elseif subEvent == "UNIT_DIED" then
         -- print("died", timestamp, destName)
