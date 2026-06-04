@@ -36,17 +36,8 @@ local RESURRECTING = F.GetSpellInfo(160029)
 
 local cleuFrame = CreateFrame("Frame")
 cleuFrame:SetScript("OnEvent", function(_, event, ...)
-    if event ~= "COMBAT_LOG_EVENT_UNFILTERED" then return end
-    -- WotLK 3.3.5a: sourceRaidFlags and destRaidFlags don't exist (added in 4.2.0)
-    local timestamp, subEvent, _, sourceGUID, sourceName, sourceFlags, destGUID, destName, destFlags, spellId, spellName
-    if CombatLogGetCurrentEventInfo then
-        -- Retail/Cata+ has sourceRaidFlags and destRaidFlags
-        local sourceRaidFlags, destRaidFlags
-        timestamp, subEvent, _, sourceGUID, sourceName, sourceFlags, sourceRaidFlags, destGUID, destName, destFlags, destRaidFlags, spellId, spellName = GetCLEUInfo(...)
-    else
-        -- WotLK 3.3.5a: No sourceRaidFlags/destRaidFlags
-        timestamp, subEvent, _, sourceGUID, sourceName, sourceFlags, destGUID, destName, destFlags, spellId, spellName = GetCLEUInfo(...)
-    end
+	if event ~= "COMBAT_LOG_EVENT_UNFILTERED" then return end
+	local timestamp, subEvent, sourceGUID, sourceName, sourceFlags, destGUID, destName, destFlags, spellId, spellName = ...
 
     if subEvent == "SPELL_AURA_REMOVED" then
         if spellName == SOULSTONE then
