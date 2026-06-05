@@ -6,8 +6,6 @@ local I = Cell.iFuncs
 ---@type PixelPerfectFuncs
 local P = Cell.pixelPerfectFuncs
 
-CELL_SUMMON_ICONS_ENABLED = false
-
 -------------------------------------------------
 -- event
 -------------------------------------------------
@@ -23,7 +21,7 @@ end
 
 local rez = {}
 local soulstones = {}
-local SOULSTONE = F.GetSpellInfo(20707)
+local SOULSTONE = F.GetSpellInfo(47883)
 
 local cleuFrame = CreateFrame("Frame")
 cleuFrame:SetScript("OnEvent", function(_, event, ...)
@@ -213,12 +211,8 @@ end
 function I.EnableStatusIcon(enabled)
     if enabled then
         eventFrame:RegisterEvent("INCOMING_RESURRECT_CHANGED")
-        eventFrame:RegisterEvent("UNIT_PHASE")
         eventFrame:RegisterEvent("PARTY_MEMBER_DISABLE")
         eventFrame:RegisterEvent("PARTY_MEMBER_ENABLE")
-        if Cell.isRetail and CELL_SUMMON_ICONS_ENABLED then
-            eventFrame:RegisterEvent("INCOMING_SUMMON_CHANGED")
-        end
         -- resurrection
         cleuFrame:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
     else
