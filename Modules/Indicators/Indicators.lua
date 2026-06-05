@@ -219,7 +219,7 @@ local function InitIndicator(indicatorName)
         end)
 
     elseif indicatorName == "statusIcon" then
-        indicator:SetTexture("Interface\\RaidFrame\\Raid-Icon-Rez")
+        indicator:SetTexture("Interface\\AddOns\\Cell_Wrath\\Media\\Roles\\Raid-Icon-Rez")
 
     elseif indicatorName == "roleIcon" then
         -- texture type cannot glow by LCG
