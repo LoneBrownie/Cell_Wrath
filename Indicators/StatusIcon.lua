@@ -25,6 +25,7 @@ local SOULSTONE = F.GetSpellInfo(47883)
 
 local cleuFrame = CreateFrame("Frame")
 cleuFrame:SetScript("OnEvent", function(_, event, ...)
+
 	if event ~= "COMBAT_LOG_EVENT_UNFILTERED" then return end
 	local timestamp, subEvent, sourceGUID, sourceName, sourceFlags, destGUID, destName, destFlags, spellId, spellName = ...
 
@@ -45,7 +46,6 @@ cleuFrame:SetScript("OnEvent", function(_, event, ...)
     elseif subEvent == "SPELL_RESURRECT" then
         local start, duration = GetTime(), 60
         rez[destGUID] = {start, duration}
-
         F.HandleUnitButton("guid", destGUID, I.UpdateStatusIcon_Resurrection, start, duration)
     end
 end)
@@ -63,7 +63,6 @@ function I.CreateStatusIcon(parent)
 		statusIcon:SetIgnoreParentAlpha(true)
 	end
 
-
     statusIcon.tex = statusIcon:CreateTexture(nil, "OVERLAY")
     statusIcon.tex:SetAllPoints(statusIcon)
 
@@ -73,10 +72,6 @@ function I.CreateStatusIcon(parent)
 
     function statusIcon:SetTexCoord(...)
         statusIcon.tex:SetTexCoord(...)
-    end
-
-    function statusIcon:SetAtlas(...)
-        statusIcon.tex:SetAtlas(...)
     end
 
     function statusIcon:SetVertexColor(...)
@@ -93,7 +88,7 @@ function I.CreateStatusIcon(parent)
     resurrectionIcon.tex:SetAllPoints(resurrectionIcon)
     resurrectionIcon.tex:SetDesaturated(true)
     resurrectionIcon.tex:SetVertexColor(0.4, 0.4, 0.4, 0.5)
-    resurrectionIcon.tex:SetTexture("Interface\\RaidFrame\\Raid-Icon-Rez")
+    resurrectionIcon.tex:SetTexture("Interface\\AddOns\\Cell_Wrath\\Media\\Roles\\Raid-Icon-Rez")
 
     local bar = CreateFrame("StatusBar", nil, resurrectionIcon)
     bar:SetAllPoints(resurrectionIcon)
@@ -117,7 +112,7 @@ function I.CreateStatusIcon(parent)
 
     local maskIcon = bar:CreateTexture(nil, "ARTWORK")
     maskIcon:SetAllPoints(resurrectionIcon)
-    maskIcon:SetTexture("Interface\\RaidFrame\\Raid-Icon-Rez")
+    maskIcon:SetTexture("Interface\\AddOns\\Cell_Wrath\\Media\\Roles\\Raid-Icon-Rez")
     maskIcon:AddMaskTexture(mask)
 
     function resurrectionIcon:SetTimer(start, duration)
@@ -195,9 +190,14 @@ function I.UpdateStatusIcon(button)
 		icon:SetTexture("Interface\\AddOns\\Cell_Wrath\\Media\\Roles\\Raid-Icon-Rez")
 		icon:SetTexCoord(0, 1, 0, 1)
 		icon:Show()		
-	elseif button.states.BGFlag then
+	elseif button.states.BGFlag == "alliance" then
 		icon:SetVertexColor(1, 1, 1, 1)
-		icon:SetAtlas(button.states.BGFlag.."_icon_and_flag-dynamicIcon")
+		icon:SetTexture("Interface\\Icons\\INV_BannerPVP_01")
+		icon:SetTexCoord(0.1, 0.9, 0.1, 0.9)
+		icon:Show()
+	elseif button.states.BGFlag == "horde" then
+		icon:SetVertexColor(1, 1, 1, 1)
+		icon:SetTexture("Interface\\Icons\\INV_BannerPVP_02")
 		icon:SetTexCoord(0.1, 0.9, 0.1, 0.9)
 		icon:Show()
 	else
