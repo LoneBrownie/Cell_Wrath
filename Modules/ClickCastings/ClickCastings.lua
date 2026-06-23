@@ -265,7 +265,7 @@ if Cell.isRetail then
                 if PlayerInCombat() then
                     self:SetAttribute(menuKey, nil)
                 else
-                    self:SetAttribute(menuKey, "togglemenu")
+                    self:SetAttribute(menuKey, "menu")
                 end
             end
         ]])
@@ -293,11 +293,11 @@ if Cell.isRetail then
     end
 else
     SetBindingClicks = function(b)
+        local snippet = b:GetAttribute("snippet") or ""
         b:SetAttribute("_onenter", [[
             -- print("_onenter")
             self:ClearBindings()
-            -- WotLK Fix: :Run() doesn't exist in WotLK's restricted execution
-            -- self:Run(self:GetAttribute("snippet"))
+]]..snippet..[[
 
             -- self:SetBindingClick(true, "SHIFT-MOUSEWHEELUP", self, "shiftSCROLLUP")
             -- FIXME: --! 如果游戏按键设置（比如“视角”“载具控制”）中绑定了滚轮，那么 self:SetBindingClick(true, "MOUSEWHEELUP", self, "SCROLLUP") 会失效
@@ -337,7 +337,7 @@ else
                 if PlayerInCombat() then
                     self:SetAttribute(menuKey, nil)
                 else
-                    self:SetAttribute(menuKey, "togglemenu")
+                    self:SetAttribute(menuKey, "menu")
                 end
             end
         ]])
@@ -396,6 +396,32 @@ local function GetMouseWheelBindKey(fullKey, noTypePrefix)
     end
 end
 
+-- Legacy compatibility: some migrated profiles store modified mouse binds as
+-- "type-alt1" / "type-ctrl4" instead of secure-action format "alt-type1" /
+-- "ctrl-type4". Normalize these before setting attributes.
+local function NormalizeLegacyBindKey(bindKey)
+    if type(bindKey) ~= "string" then return bindKey end
+
+    local modifier, mouseButton = bindKey:match("^type%-([%a]+)(%d+)$")
+    if modifier and mouseButton then
+        modifier = strlower(modifier)
+        if modifier ~= "alt" and modifier ~= "ctrl" and modifier ~= "shift" and modifier ~= "meta" then
+            return bindKey
+        end
+        return modifier.."-type"..mouseButton
+    end
+
+    return bindKey
+end
+
+local function GetBindKeyVariants(bindKey)
+    local normalized = NormalizeLegacyBindKey(bindKey)
+    if normalized ~= bindKey then
+        return normalized, bindKey
+    end
+    return bindKey, nil
+end
+
 function F.GetBindingSnippet()
     local bindingClicks = {}
     for _, t in pairs(clickCastingTable) do
@@ -446,20 +472,25 @@ local function ClearClickCastings(b)
     b:SetAttribute("cell", nil)
     b:SetAttribute("menu", nil)
     for _, t in pairs(previousClickCastings) do
-        local bindKey = t[1]
+        local bindKey, legacyBindKey = GetBindKeyVariants(t[1])
         if strfind(bindKey, "SCROLL") then
             bindKey = GetMouseWheelBindKey(t[1])
+            legacyBindKey = nil
         end
 
-        b:SetAttribute(bindKey, nil)
-        local attr = string.gsub(bindKey, "type", "spell")
-        b:SetAttribute(attr, nil)
-        attr = string.gsub(bindKey, "type", "macro")
-        b:SetAttribute(attr, nil)
-        attr = string.gsub(bindKey, "type", "macrotext")
-        b:SetAttribute(attr, nil)
-        attr = string.gsub(bindKey, "type", "item")
-        b:SetAttribute(attr, nil)
+        for _, k in ipairs({bindKey, legacyBindKey}) do
+            if k then
+                b:SetAttribute(k, nil)
+                local attr = string.gsub(k, "type", "spell")
+                b:SetAttribute(attr, nil)
+                attr = string.gsub(k, "type", "macro")
+                b:SetAttribute(attr, nil)
+                attr = string.gsub(k, "type", "macrotext")
+                b:SetAttribute(attr, nil)
+                attr = string.gsub(k, "type", "item")
+                b:SetAttribute(attr, nil)
+            end
+        end
         -- attr = string.gsub(bindKey, "type", "click")
         -- b:SetAttribute(attr, nil)
         -- if t[2] == "spell" then
@@ -500,9 +531,15 @@ end
 
 local function ApplyClickCastings(b)
     for i, t in pairs(clickCastingTable) do
-        local bindKey = t[1]
+        local bindKey, legacyBindKey = GetBindKeyVariants(t[1])
         if strfind(bindKey, "SCROLL") then
             bindKey = GetMouseWheelBindKey(t[1])
+            legacyBindKey = nil
+        end
+
+        local bindKeys = {bindKey}
+        if legacyBindKey then
+            tinsert(bindKeys, legacyBindKey)
         end
 
         if t[2] == "togglemenu_nocombat" then
@@ -516,7 +553,13 @@ local function ApplyClickCastings(b)
         --     UpdatePlaceholder(b, attr)
         ------------------------------------------------------------------
         else
-            b:SetAttribute(bindKey, t[2])
+            local actionType = t[2]
+            if not Cell.isRetail and actionType == "togglemenu" then
+                actionType = "menu"
+            end
+            for _, k in ipairs(bindKeys) do
+                b:SetAttribute(k, actionType)
+            end
         end
 
         if t[2] == "spell" then
@@ -540,7 +583,11 @@ local function ApplyClickCastings(b)
                 condition = F.IsResurrectionForDead(spellName) and ",dead" or ",nodead"
             end
 
-            local unit = Cell.isRetail and "@mouseover" or "@cell"
+            -- ClassicAPI/Clique-style targeting: cast directly at @mouseover.
+            -- This avoids relying on secure placeholder rewrites (@cell -> @unit)
+            -- which can fail on some 3.3.5 backports.
+            -- Use legacy condition syntax on non-retail clients for max compatibility.
+            local unit = Cell.isRetail and "@mouseover" or "target=mouseover"
 
             -- "sMaRt" resurrection
             local sMaRt = ""
@@ -568,34 +615,49 @@ local function ApplyClickCastings(b)
             local fix = t[3] == 370665 and "" or "\n/stopspelltarget"
 
             if (alwaysTargeting == "left" and bindKey == "type1") or alwaysTargeting == "any" then
-                b:SetAttribute(bindKey, "macro")
-                local attr = string.gsub(bindKey, "type", "macrotext")
-                b:SetAttribute(attr, "/tar ["..unit.."]\n/cast ["..unit..condition.."] "..spellName..sMaRt..fix)
-                if not Cell.isRetail then UpdatePlaceholder(b, attr) end
-            else
-                -- NOTE: "spell" is not ideal, 在无效/过远的目标上会处于“等待选中目标”的状态，即鼠标指针有一圈灰/蓝色材质
-                -- local attr = string.gsub(bindKey, "type", "spell")
-                -- b:SetAttribute(attr, spellName)
-                b:SetAttribute(bindKey, "macro")
-                local attr = string.gsub(bindKey, "type", "macrotext")
-                if F.IsSoulstone(spellName) then
-                    b:SetAttribute(attr, "/tar ["..unit.."]\n/cast ["..unit.."] "..spellName.."\n/targetlasttarget")
-                else
-                    b:SetAttribute(attr, "/cast ["..unit..condition.."] "..spellName..sMaRt..fix)
+                for _, k in ipairs(bindKeys) do
+                    b:SetAttribute(k, "macro")
+                    local attr = string.gsub(k, "type", "macrotext")
+                    b:SetAttribute(attr, "/tar ["..unit.."]\n/cast ["..unit..condition.."] "..spellName..sMaRt..fix)
                 end
-                if not Cell.isRetail then UpdatePlaceholder(b, attr) end
+            else
+                -- Clique-style default: use secure spell attributes for regular click-casts.
+                -- Only fall back to macro when extra conditional logic is required.
+                if sMaRt ~= "" or F.IsSoulstone(spellName) then
+                    for _, k in ipairs(bindKeys) do
+                        b:SetAttribute(k, "macro")
+                        local attr = string.gsub(k, "type", "macrotext")
+                        if F.IsSoulstone(spellName) then
+                            b:SetAttribute(attr, "/tar ["..unit.."]\n/cast ["..unit.."] "..spellName.."\n/targetlasttarget")
+                        else
+                            b:SetAttribute(attr, "/cast ["..unit..condition.."] "..spellName..sMaRt..fix)
+                        end
+                    end
+                else
+                    for _, k in ipairs(bindKeys) do
+                        b:SetAttribute(k, "spell")
+                        local attr = string.gsub(k, "type", "spell")
+                        b:SetAttribute(attr, spellName)
+                    end
+                end
             end
         elseif t[2] == "macro" then
-            local attr = string.gsub(bindKey, "type", "macro")
-            -- b:SetAttribute(attr, GetMacroIndexByName(t[3]))
-            b:SetAttribute(attr, t[3])
+            for _, k in ipairs(bindKeys) do
+                local attr = string.gsub(k, "type", "macro")
+                -- b:SetAttribute(attr, GetMacroIndexByName(t[3]))
+                b:SetAttribute(attr, t[3])
+            end
         elseif t[2] == "custom" then
-            b:SetAttribute(bindKey, "macro")
-            local attr = string.gsub(bindKey, "type", "macrotext")
-            b:SetAttribute(attr, t[3])
+            for _, k in ipairs(bindKeys) do
+                b:SetAttribute(k, "macro")
+                local attr = string.gsub(k, "type", "macrotext")
+                b:SetAttribute(attr, t[3])
+            end
         else
-            local attr = string.gsub(bindKey, "type", t[2])
-            b:SetAttribute(attr, t[3])
+            for _, k in ipairs(bindKeys) do
+                local attr = string.gsub(k, "type", t[2])
+                b:SetAttribute(attr, t[3])
+            end
         end
     end
 end
@@ -603,6 +665,20 @@ end
 function F.UpdateClickCastOnFrame(frame, snippet)
     if frame then
         ClearClickCastings(frame)
+
+        local useAnyDown = true
+        if type(GetCVarBool) == "function" then
+            useAnyDown = GetCVarBool("ActionButtonUseKeyDown")
+        elseif type(GetCVar) == "function" then
+            useAnyDown = GetCVar("ActionButtonUseKeyDown") == "1"
+        end
+
+        -- Register both directions to avoid client/CVar/backport mismatches.
+        frame:RegisterForClicks("AnyDown", "AnyUp")
+        if frame.EnableMouseWheel then
+            frame:EnableMouseWheel(true)
+        end
+
         -- update bindingClicks
         frame:SetAttribute("snippet", snippet)
         SetBindingClicks(frame)
@@ -1776,4 +1852,94 @@ function F.UpdateClickCastingProfileLabel()
     if loaded then
         UpdateCurrentText(Cell.vars.clickCastings["useCommon"])
     end
+end
+
+-------------------------------------------------
+-- click-casting debug
+-------------------------------------------------
+local function GetCurrentClickCastingTable()
+    if not (Cell and Cell.vars and type(Cell.vars.clickCastings) == "table") then
+        return nil
+    end
+
+    local cc = Cell.vars.clickCastings
+    return cc["useCommon"] and cc["common"] or cc[Cell.vars.playerSpecID]
+end
+
+local function FindDebugButton()
+    if UnitExists("mouseover") then
+        local guid = UnitGUID("mouseover")
+        if guid then
+            local b = F.GetUnitButtonByGUID(guid)
+            if b then
+                return b, "mouseover"
+            end
+        end
+    end
+
+    local hovered
+    F.IterateAllUnitButtons(function(b)
+        if not hovered and b and b.IsMouseOver and b:IsMouseOver() then
+            hovered = b
+        end
+    end, false, true)
+
+    return hovered, hovered and "frame" or nil
+end
+
+local function DumpButtonAttributes(b)
+    local name = b.GetName and b:GetName() or "<unnamed>"
+    local unit = b.GetAttribute and b:GetAttribute("unit") or nil
+    print("|cff00ffff[Cell ClickDebug]|r Button:", name, "unit:", tostring(unit))
+    print("|cff00ffff[Cell ClickDebug]|r ActionButtonUseKeyDown:", tostring((GetCVar and GetCVar("ActionButtonUseKeyDown")) or "nil"))
+    print("|cff00ffff[Cell ClickDebug]|r menu:", tostring(b:GetAttribute("menu")), "cell:", tostring(b:GetAttribute("cell")))
+
+    local tbl = GetCurrentClickCastingTable()
+    if type(tbl) ~= "table" then
+        print("|cffff3030[Cell ClickDebug]|r click-casting table not available")
+        return
+    end
+
+    local function printKeyState(key, tag)
+        local actionType = b:GetAttribute(key)
+        local actionValue
+        if actionType == "spell" then
+            actionValue = b:GetAttribute(string.gsub(key, "type", "spell"))
+        elseif actionType == "macro" then
+            actionValue = b:GetAttribute(string.gsub(key, "type", "macrotext"))
+        elseif actionType == "item" then
+            actionValue = b:GetAttribute(string.gsub(key, "type", "item"))
+        elseif actionType then
+            actionValue = b:GetAttribute(string.gsub(key, "type", actionType))
+        end
+
+        print("|cff00ffff[Cell ClickDebug]|r", tag, key, "=> type:", tostring(actionType), "value:", tostring(actionValue))
+    end
+
+    for _, t in pairs(tbl) do
+        local rawKey = t[1]
+        if rawKey and rawKey ~= "notBound" then
+            if strfind(rawKey, "SCROLL") then
+                rawKey = GetMouseWheelBindKey(rawKey)
+            end
+
+            local normalizedKey = NormalizeLegacyBindKey(rawKey)
+            printKeyState(rawKey, "raw")
+            if normalizedKey ~= rawKey then
+                printKeyState(normalizedKey, "norm")
+            end
+        end
+    end
+end
+
+SLASH_CELLCCDEBUG1 = "/cellccdebug"
+SlashCmdList.CELLCCDEBUG = function()
+    local b, source = FindDebugButton()
+    if not b then
+        print("|cffff3030[Cell ClickDebug]|r No hovered Cell unit button found. Mouse over a Cell frame and run /cellccdebug.")
+        return
+    end
+
+    print("|cff00ffff[Cell ClickDebug]|r Source:", source)
+    DumpButtonAttributes(b)
 end

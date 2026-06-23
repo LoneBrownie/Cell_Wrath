@@ -1263,8 +1263,10 @@ CreateQuickCastButton = function(parent, name, isPreview)
         if glowCastCD:IsShown() then
             LCG.ButtonGlow_Start(glowCastCD, _glowCastsColor)
         end
-        outerCD:SetSwipeColor(unpack(_outerColor))
-        innerCD:SetSwipeColor(unpack(_innerColor))
+        local r1, g1, b1, a1 = unpack(_outerColor)
+        local r2, g2, b2, a2 = unpack(_innerColor)
+        outerCD:SetSwipeColor(r1, g1, b1, a1 or 1)
+        innerCD:SetSwipeColor(r2, g2, b2, a2 or 1)
     end
 
     --! NOTE: GROUP_ROSTER_UPDATE or PLAYER_LOGIN or MANUALLY CALLED

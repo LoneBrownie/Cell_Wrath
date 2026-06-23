@@ -457,7 +457,7 @@ local function BorderIcon_SetCooldown(frame, start, duration, debuffType, textur
     else
         frame.border:Hide()
         frame.cooldown:Show()
-        frame.cooldown:SetSwipeColor(r, g, b)
+        frame.cooldown:SetSwipeColor(r, g, b, 1)
         frame.cooldown:_SetCooldown(start, duration)
 
         if not frame.showDuration then
@@ -529,7 +529,7 @@ function I.CreateAura_BorderIcon(name, parent, borderSize)
     frame.cooldown = cooldown
     cooldown:SetAllPoints(frame)
     cooldown:SetSwipeTexture(Cell.vars.whiteTexture)
-    cooldown:SetSwipeColor(1, 1, 1)
+    cooldown:SetSwipeColor(1, 1, 1, 1)
     cooldown:SetHideCountdownNumbers(true)
     -- disable omnicc
     cooldown.noCooldownCount = true

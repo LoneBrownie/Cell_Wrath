@@ -3,6 +3,34 @@ local addonName, ns = ...
 _G.Cell = _G.Cell or ns or {}
 local Cell = _G.Cell
 
+local function IsAddOnAvailable(addonName)
+    if type(addonName) ~= "string" or addonName == "" then
+        return false
+    end
+
+    if type(GetNumAddOns) ~= "function" or type(GetAddOnInfo) ~= "function" then
+        return false
+    end
+
+    local target = string.lower(addonName)
+    for i = 1, GetNumAddOns() do
+        local name = GetAddOnInfo(i)
+        if type(name) == "string" and string.lower(name) == target then
+            return true
+        end
+    end
+
+    return false
+end
+
+local hasClassicAPI =
+    type(_G.ClassicAPI) == "table"
+    or (type(IsAddOnLoaded) == "function" and (IsAddOnLoaded("ClassicAPI") or IsAddOnLoaded("ClassicApi")))
+    or IsAddOnAvailable("ClassicAPI")
+    or IsAddOnAvailable("ClassicApi")
+
+Cell.hasClassicAPI = hasClassicAPI
+
 -------------------------------------------------
 -- securecallfunction polyfill
 -- Some 3.3.5 builds lack this helper; Ace libraries expect it.
@@ -251,25 +279,25 @@ end
 do
     local region = CreateFrame("Frame")
     local mt = getmetatable(region)
-    if not mt or not mt.__index then return end
+    if mt and mt.__index then
+        local idx = mt.__index
 
-    local idx = mt.__index
-
-    -- Retail: ScriptRegion:SetMouseClickEnabled(bool)
-    if not idx.SetMouseClickEnabled then
-        function idx:SetMouseClickEnabled(enabled)
-            -- Wrath only has EnableMouse(bool) for both hover+click
-            if self.EnableMouse then
-                self:EnableMouse(not not enabled)
+        -- Retail: ScriptRegion:SetMouseClickEnabled(bool)
+        if not idx.SetMouseClickEnabled then
+            function idx:SetMouseClickEnabled(enabled)
+                -- Wrath only has EnableMouse(bool) for both hover+click
+                if self.EnableMouse then
+                    self:EnableMouse(not not enabled)
+                end
             end
         end
-    end
 
-    -- Retail: ScriptRegion:SetMouseMotionEnabled(bool)
-    if not idx.SetMouseMotionEnabled then
-        function idx:SetMouseMotionEnabled(enabled)
-            if self.EnableMouse then
-                self:EnableMouse(not not enabled)
+        -- Retail: ScriptRegion:SetMouseMotionEnabled(bool)
+        if not idx.SetMouseMotionEnabled then
+            function idx:SetMouseMotionEnabled(enabled)
+                if self.EnableMouse then
+                    self:EnableMouse(not not enabled)
+                end
             end
         end
     end
@@ -816,6 +844,26 @@ do
             end
         end
 
+        if not mt.__index._CellSetSwipeColorShim then
+            local origSetSwipeColor = mt.__index.SetSwipeColor
+            function mt.__index:SetSwipeColor(r, g, b, a)
+                if a == nil then
+                    a = 1
+                end
+
+                if type(origSetSwipeColor) == "function" then
+                    local ok = pcall(origSetSwipeColor, self, r, g, b, a)
+                    if ok then
+                        return
+                    end
+                end
+
+                -- Ignore on clients/addons without a working swipe implementation.
+            end
+
+            mt.__index._CellSetSwipeColorShim = true
+        end
+
         if not mt.__index.SetDrawEdge then
             function mt.__index:SetDrawEdge(flag)
                 -- Ignore
@@ -963,26 +1011,37 @@ end
 
 -- CreateMaskTexture polyfill for 3.3.5a (Frame / StatusBar / Cooldown / Texture)
 do
+    local function CreateFallbackMask(parent)
+        local mask = CreateFrame("Frame", nil, parent)
+        mask:SetAllPoints(parent)
+        mask:EnableMouse(false)
+
+        -- Dummy API that call sites expect on mask textures.
+        mask.SetTexture = function() end
+        mask.SetRotated = function() end
+        mask.SetPoint = function() end
+        mask.SetAllPoints = function() end
+
+        return mask
+    end
+
     local function addCreateMaskTexture(obj)
         local mt = getmetatable(obj)
         if not mt or type(mt.__index) ~= "table" then
             return
         end
 
-        if not mt.__index.CreateMaskTexture then
-            function mt.__index:CreateMaskTexture()
-                -- 3.3.5a has no real mask textures; fake it with a hidden Frame (empty)
-                -- We use a Frame instead of Texture to avoid the "white box" issue if SetTexture is called.
-                local mask = CreateFrame("Frame", nil, self)
-                mask:SetAllPoints(self)
-                mask:EnableMouse(false) -- Ensure it doesn't block clicks
-                
-                -- Add dummy methods that Actions.lua expects on a Texture/Mask
-                mask.SetTexture = function() end
-                mask.SetRotated = function() end
-                
-                return mask
+        local originalCreateMaskTexture = mt.__index.CreateMaskTexture
+        function mt.__index:CreateMaskTexture(...)
+            if type(originalCreateMaskTexture) == "function" then
+                local ok, result = pcall(originalCreateMaskTexture, self, ...)
+                if ok and result then
+                    return result
+                end
             end
+
+            -- 3.3.5a has no real mask textures; provide a non-nil fallback object.
+            return CreateFallbackMask(self)
         end
     end
 
@@ -999,9 +1058,17 @@ end
 do
     local t = UIParent:CreateTexture()
     local mt = getmetatable(t)
-    if mt and mt.__index and not mt.__index.AddMaskTexture then
+    if mt and mt.__index then
+        local originalAddMaskTexture = mt.__index.AddMaskTexture
+
         function mt.__index:AddMaskTexture(mask)
-            -- Ignore; real masking doesn't exist on 3.3.5
+            if type(originalAddMaskTexture) == "function" then
+                local ok = pcall(originalAddMaskTexture, self, mask)
+                if ok then
+                    return
+                end
+            end
+            -- Ignore; real masking may not exist on 3.3.5/custom clients.
         end
     end
 end
@@ -1218,7 +1285,7 @@ if Cell then
 end
 
 -- C_UnitAuras
-if not C_UnitAuras then
+if not hasClassicAPI and not C_UnitAuras then
     C_UnitAuras = {}
     function C_UnitAuras.GetAuraDataBySlot(unit, slot)
         -- This is a simplified mapping. Real C_UnitAuras returns a table.
@@ -1294,11 +1361,11 @@ if not C_UnitAuras then
 end
 
 -- C_Map
-if not C_Map then
+if not hasClassicAPI and not C_Map then
     C_Map = {}
 end
 
-if not C_Map.GetBestMapForUnit then
+if not hasClassicAPI and C_Map and not C_Map.GetBestMapForUnit then
     function C_Map.GetBestMapForUnit(unit)
         -- Very basic fallback - try GetCurrentMapAreaID if it exists
         if GetCurrentMapAreaID then
@@ -1310,7 +1377,7 @@ if not C_Map.GetBestMapForUnit then
 end
 
 -- C_ChatInfo
-if not C_ChatInfo then
+if not hasClassicAPI and not C_ChatInfo then
     C_ChatInfo = {}
     function C_ChatInfo.SendAddonMessage(prefix, text, channel, target)
         -- Avoid hard Lua errors if callers pass bad params (seen on some addons)
@@ -1333,7 +1400,7 @@ if not C_ChatInfo then
 end
 
 -- RegisterAddonMessagePrefix polyfill (global function for WotLK)
-if not RegisterAddonMessagePrefix then
+if not hasClassicAPI and not RegisterAddonMessagePrefix then
     function RegisterAddonMessagePrefix(prefix)
         -- In WotLK 3.3.5, addon message prefixes are automatically registered
         -- when first used with SendAddonMessage, so this is a no-op
@@ -1342,7 +1409,7 @@ if not RegisterAddonMessagePrefix then
 end
 
 -- BNSendGameData polyfill (Battle.net doesn't exist in WotLK 3.3.5)
-if not BNSendGameData then
+if not hasClassicAPI and not BNSendGameData then
     function BNSendGameData(gameAccountID, addonPrefix, addonMessage)
         -- Battle.net game data messaging doesn't exist in WotLK
         -- This is a no-op to prevent errors from libraries that try to hook it
@@ -1350,115 +1417,117 @@ if not BNSendGameData then
     end
 end
 
-C_AddOns = C_AddOns or {}
+if not hasClassicAPI then
+    C_AddOns = C_AddOns or {}
 
--- Mirror the modern C_AddOns API to the classic global functions so other addons
--- can safely hook them (e.g. Details! calls hooksecurefunc on LoadAddOn).
-if not C_AddOns.GetAddOnMetadata then
-    function C_AddOns.GetAddOnMetadata(addon, field)
-        if GetAddOnMetadata then
-            return GetAddOnMetadata(addon, field)
-        end
-    end
-end
-
-if not C_AddOns.IsAddOnLoaded then
-    function C_AddOns.IsAddOnLoaded(addon)
-        if IsAddOnLoaded then
-            return IsAddOnLoaded(addon)
-        end
-        return false
-    end
-end
-
-if not C_AddOns.LoadAddOn then
-    function C_AddOns.LoadAddOn(addon)
-        if LoadAddOn then
-            return LoadAddOn(addon)
-        end
-        return false, "MISSING"
-    end
-end
-
-if not C_AddOns.GetNumAddOns then
-    function C_AddOns.GetNumAddOns()
-        if GetNumAddOns then
-            return GetNumAddOns()
-        end
-        return 0
-    end
-end
-
-if not C_AddOns.GetAddOnInfo then
-    function C_AddOns.GetAddOnInfo(addonIndexOrName)
-        if GetAddOnInfo then
-            return GetAddOnInfo(addonIndexOrName)
-        end
-    end
-end
-
-if not C_AddOns.GetAddOnDependencies then
-    function C_AddOns.GetAddOnDependencies(addonName)
-        if GetAddOnDependencies then
-            local deps = {GetAddOnDependencies(addonName)}
-            if #deps > 0 then
-                return deps
+    -- Mirror the modern C_AddOns API to the classic global functions so other addons
+    -- can safely hook them (e.g. Details! calls hooksecurefunc on LoadAddOn).
+    if not C_AddOns.GetAddOnMetadata then
+        function C_AddOns.GetAddOnMetadata(addon, field)
+            if GetAddOnMetadata then
+                return GetAddOnMetadata(addon, field)
             end
         end
-        return {}
     end
-end
 
-if not C_AddOns.GetAddOnEnableState then
-    function C_AddOns.GetAddOnEnableState(character, addonName)
-        if GetAddOnEnableState then
-            return GetAddOnEnableState(character, addonName)
+    if not C_AddOns.IsAddOnLoaded then
+        function C_AddOns.IsAddOnLoaded(addon)
+            if IsAddOnLoaded then
+                return IsAddOnLoaded(addon)
+            end
+            return false
         end
-        local enabled = C_AddOns.IsAddOnLoaded and C_AddOns.IsAddOnLoaded(addonName)
-        return enabled and 1 or 0
     end
-end
 
-if not C_AddOns.EnableAddOn then
-    function C_AddOns.EnableAddOn(addonName, characterName)
-        if EnableAddOn then
-            return EnableAddOn(addonName, characterName)
+    if not C_AddOns.LoadAddOn then
+        function C_AddOns.LoadAddOn(addon)
+            if LoadAddOn then
+                return LoadAddOn(addon)
+            end
+            return false, "MISSING"
         end
-        return false
     end
-end
 
-if not C_AddOns.DisableAddOn then
-    function C_AddOns.DisableAddOn(addonName, characterName)
-        if DisableAddOn then
-            return DisableAddOn(addonName, characterName)
+    if not C_AddOns.GetNumAddOns then
+        function C_AddOns.GetNumAddOns()
+            if GetNumAddOns then
+                return GetNumAddOns()
+            end
+            return 0
         end
-        return false
     end
-end
 
--- LoadAddOn polyfill (ensure it exists as a global function for other addons to hook)
-if not LoadAddOn then
-    -- WotLK has LoadAddOn, but it might not be available on all custom servers
-    -- Create a basic implementation using the native API if it exists
-    function LoadAddOn(addonName)
-        -- Try to use native LoadAddOn if it exists (shouldn't happen, but safe)
-        if _G._CellOriginalLoadAddOn then
-            return _G._CellOriginalLoadAddOn(addonName)
+    if not C_AddOns.GetAddOnInfo then
+        function C_AddOns.GetAddOnInfo(addonIndexOrName)
+            if GetAddOnInfo then
+                return GetAddOnInfo(addonIndexOrName)
+            end
         end
-        -- Fallback: return false (addon not loaded)
-        return false
     end
-elseif type(LoadAddOn) ~= "function" then
-    -- LoadAddOn exists but isn't a function (corrupted?), fix it
-    local old = LoadAddOn
-    function LoadAddOn(addonName)
-        return false
+
+    if not C_AddOns.GetAddOnDependencies then
+        function C_AddOns.GetAddOnDependencies(addonName)
+            if GetAddOnDependencies then
+                local deps = {GetAddOnDependencies(addonName)}
+                if #deps > 0 then
+                    return deps
+                end
+            end
+            return {}
+        end
+    end
+
+    if not C_AddOns.GetAddOnEnableState then
+        function C_AddOns.GetAddOnEnableState(character, addonName)
+            if GetAddOnEnableState then
+                return GetAddOnEnableState(character, addonName)
+            end
+            local enabled = C_AddOns.IsAddOnLoaded and C_AddOns.IsAddOnLoaded(addonName)
+            return enabled and 1 or 0
+        end
+    end
+
+    if not C_AddOns.EnableAddOn then
+        function C_AddOns.EnableAddOn(addonName, characterName)
+            if EnableAddOn then
+                return EnableAddOn(addonName, characterName)
+            end
+            return false
+        end
+    end
+
+    if not C_AddOns.DisableAddOn then
+        function C_AddOns.DisableAddOn(addonName, characterName)
+            if DisableAddOn then
+                return DisableAddOn(addonName, characterName)
+            end
+            return false
+        end
+    end
+
+    -- LoadAddOn polyfill (ensure it exists as a global function for other addons to hook)
+    if not LoadAddOn then
+        -- WotLK has LoadAddOn, but it might not be available on all custom servers
+        -- Create a basic implementation using the native API if it exists
+        function LoadAddOn(addonName)
+            -- Try to use native LoadAddOn if it exists (shouldn't happen, but safe)
+            if _G._CellOriginalLoadAddOn then
+                return _G._CellOriginalLoadAddOn(addonName)
+            end
+            -- Fallback: return false (addon not loaded)
+            return false
+        end
+    elseif type(LoadAddOn) ~= "function" then
+        -- LoadAddOn exists but isn't a function (corrupted?), fix it
+        local old = LoadAddOn
+        function LoadAddOn(addonName)
+            return false
+        end
     end
 end
 
 -- C_PvP
-if not C_PvP then
+if not hasClassicAPI and not C_PvP then
     C_PvP = {}
     function C_PvP.IsBattleground()
         local inInstance, instanceType = IsInInstance()
@@ -1467,7 +1536,7 @@ if not C_PvP then
 end
 
 -- C_TooltipInfo
-if not C_TooltipInfo then
+if not hasClassicAPI and not C_TooltipInfo then
     C_TooltipInfo = {}
     function C_TooltipInfo.GetSpellByID(spellId)
         -- Placeholder, returns empty table or minimal info
@@ -1479,8 +1548,7 @@ end
 do
     local tooltip = CreateFrame("GameTooltip")
     local mt = getmetatable(tooltip)
-    if mt and mt.__index then
-        -- FORCE overwrite to ensure we control it
+    if mt and mt.__index and not hasClassicAPI and not mt.__index.SetSpellByID then
         mt.__index.SetSpellByID = function(self, spellID)
             if not spellID then return end
             -- Try to get link
@@ -1497,7 +1565,7 @@ do
 end
 
 -- SOUNDKIT
-if not SOUNDKIT then
+if not hasClassicAPI and not SOUNDKIT then
     SOUNDKIT = {
         U_CHAT_SCROLL_BUTTON = "UChatScrollButton",
         IG_MAINMENU_OPTION_CHECKBOX_ON = "igMainMenuOptionCheckBoxOn",
@@ -1512,7 +1580,7 @@ if not SOUNDKIT then
 end
 
 -- C_ClassTalents (Retail talent system, not in WotLK)
-if not C_ClassTalents then
+if not hasClassicAPI and not C_ClassTalents then
     C_ClassTalents = {}
     function C_ClassTalents.GetActiveConfigID()
         -- WotLK uses GetActiveTalentGroup() which returns 1 or 2
@@ -1521,7 +1589,7 @@ if not C_ClassTalents then
 end
 
 -- C_Traits (Retail talent tree system, not in WotLK)
-if not C_Traits then
+if not hasClassicAPI and not C_Traits then
     C_Traits = {}
     function C_Traits.GetNodeInfo(configID, nodeID)
         -- WotLK doesn't have trait nodes
@@ -1531,7 +1599,7 @@ if not C_Traits then
 end
 
 -- C_SpecializationInfo (MoP+ spec system, not in WotLK)
-if not C_SpecializationInfo then
+if not hasClassicAPI and not C_SpecializationInfo then
     C_SpecializationInfo = {}
     function C_SpecializationInfo.GetSpecialization()
         -- WotLK doesn't have specializations (added in MoP)
@@ -1545,7 +1613,7 @@ if not C_SpecializationInfo then
 end
 
 -- C_NamePlate (Modern nameplate API, not in WotLK)
-if not C_NamePlate then
+if not hasClassicAPI and not C_NamePlate then
     C_NamePlate = {}
     function C_NamePlate.GetNamePlates(issecure)
         -- WotLK has no nameplate API

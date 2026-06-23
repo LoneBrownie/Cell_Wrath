@@ -105,15 +105,17 @@ function I.CreateStatusIcon(parent)
         bar.elapsedTime = bar.elapsedTime + elapsed
     end)
 
-    local mask = resurrectionIcon:CreateMaskTexture()
-    mask:SetTexture(Cell.vars.whiteTexture, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
-    mask:SetPoint("TOPLEFT", bar:GetStatusBarTexture(), "BOTTOMLEFT")
-    mask:SetPoint("BOTTOMRIGHT")
+    local mask = resurrectionIcon.CreateMaskTexture and resurrectionIcon:CreateMaskTexture()
+    if mask then
+        mask:SetTexture(Cell.vars.whiteTexture, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+        mask:SetPoint("TOPLEFT", bar:GetStatusBarTexture(), "BOTTOMLEFT")
+        mask:SetPoint("BOTTOMRIGHT")
 
-    local maskIcon = bar:CreateTexture(nil, "ARTWORK")
-    maskIcon:SetAllPoints(resurrectionIcon)
-    maskIcon:SetTexture("Interface\\AddOns\\Cell_Wrath\\Media\\Roles\\Raid-Icon-Rez")
-    maskIcon:AddMaskTexture(mask)
+        local maskIcon = bar:CreateTexture(nil, "ARTWORK")
+        maskIcon:SetAllPoints(resurrectionIcon)
+        maskIcon:SetTexture("Interface\\AddOns\\Cell_Wrath\\Media\\Roles\\Raid-Icon-Rez")
+        maskIcon:AddMaskTexture(mask)
+    end
 
     function resurrectionIcon:SetTimer(start, duration)
         resurrectionIcon:Hide() -- pause OnUpdate

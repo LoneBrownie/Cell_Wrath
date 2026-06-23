@@ -3036,10 +3036,19 @@ end
 Cell.vars.guids = {} -- guid to unitid
 Cell.vars.names = {} -- name to unitid
 
+local ApplyClickCastingsOnLoad
+
 local function UnitButton_OnShow(self)
     self._updateRequired = 1 -- prevent UnitButton_UpdateAll twice. when convert party <-> raid, GROUP_ROSTER_UPDATE fired.
     self._powerUpdateRequired = 1
     UnitButton_RegisterEvents(self)
+
+    -- Failsafe: ensure click-cast attributes are attached to live secure buttons.
+    -- This covers load-order races where global click-casting update happened
+    -- before all unit buttons were created.
+    if ApplyClickCastingsOnLoad then
+        ApplyClickCastingsOnLoad(self)
+    end
 
     --[[
     if self.states.unit then
@@ -3101,6 +3110,40 @@ end
 local function UnitButton_OnLeave(self)
     self.widgets.mouseoverHighlight:Hide()
     GameTooltip:Hide()
+end
+
+ApplyClickCastingsOnLoad = function(button)
+    if not button then return end
+    if type(F.UpdateClickCastOnFrame) ~= "function" or type(F.GetBindingSnippet) ~= "function" then
+        return
+    end
+
+    local function applyNow()
+        if not (Cell and Cell.vars and type(Cell.vars.clickCastings) == "table") then
+            return
+        end
+
+        local ok, snippet = pcall(F.GetBindingSnippet)
+        if ok and type(snippet) == "string" then
+            F.UpdateClickCastOnFrame(button, snippet)
+        end
+    end
+
+    if InCombatLockdown() then
+        if button._cellClickCastDeferred then return end
+
+        local waiter = CreateFrame("Frame")
+        button._cellClickCastDeferred = waiter
+        waiter:RegisterEvent("PLAYER_REGEN_ENABLED")
+        waiter:SetScript("OnEvent", function(self)
+            self:UnregisterAllEvents()
+            button._cellClickCastDeferred = nil
+            applyNow()
+        end)
+        return
+    end
+
+    applyNow()
 end
 
 local UNKNOWN = _G.UNKNOWN
@@ -4163,4 +4206,7 @@ function CellUnitButton_OnLoad(button)
     button:SetScript("OnUpdate", UnitButton_OnUpdate)
     button:SetScript("OnEvent", UnitButton_OnEvent)
     button:RegisterForClicks("AnyDown")
+
+    -- Ensure late-created secure buttons always receive click-casting attributes.
+    ApplyClickCastingsOnLoad(button)
 end
