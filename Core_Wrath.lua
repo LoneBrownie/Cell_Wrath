@@ -688,6 +688,22 @@ function eventFrame:PLAYER_ENTERING_WORLD()
     if CellDB["firstRun"] then
         F.FirstRun()
     end
+
+    -- On reload/login, force a roster refresh if we're already grouped so names/indicators populate.
+    if IsInRaid() or IsInGroup() then
+        -- Run twice (early and after a short delay) to catch late unit name resolution.
+        C_Timer.After(0.1, function() eventFrame:GROUP_ROSTER_UPDATE() end)
+        C_Timer.After(0.5, function() eventFrame:GROUP_ROSTER_UPDATE() end)
+
+        -- Force party button sync/update shortly after (covers solo/party).
+        C_Timer.After(0.6, function()
+            if Cell.vars.groupType == "party" or Cell.vars.groupType == "solo" then
+                if Cell.frames.partyFrame and Cell.frames.partyFrame:IsShown() then
+                    Cell.Fire("GroupTypeChanged", "party")
+                end
+            end
+        end)
+    end
 end
 
 local function CheckDivineAegis()
@@ -826,26 +842,6 @@ function eventFrame:PLAYER_TALENT_UPDATE()
     CheckDivineAegis()
     -- UpdateSpecVars(true)
     F.UpdateClickCastingProfileLabel()
-end
-
-function eventFrame:PLAYER_ENTERING_WORLD()
-    -- NOTE: Cell no longer registers with LibSharedMedia
-    -- F.RegisterWithLSM()  -- Now a no-op
-
-    -- On reload/login, force a roster refresh if we're already grouped so names/indicators populate.
-    if IsInRaid() or IsInGroup() then
-        -- Run twice (early and after a short delay) to catch late unit name resolution.
-        C_Timer.After(0.1, function() eventFrame:GROUP_ROSTER_UPDATE() end)
-        C_Timer.After(0.5, function() eventFrame:GROUP_ROSTER_UPDATE() end)
-        -- And force party button sync/update shortly after (covers solo/party)
-        C_Timer.After(0.6, function()
-            if Cell.vars.groupType == "party" or Cell.vars.groupType == "solo" then
-                if Cell.frames.partyFrame and Cell.frames.partyFrame:IsShown() then
-                    Cell.Fire("GroupTypeChanged", "party")
-                end
-            end
-        end)
-    end
 end
 
 eventFrame:SetScript("OnEvent", function(self, event, ...)

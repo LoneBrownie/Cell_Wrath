@@ -125,9 +125,8 @@ local function SoloFrame_GroupTypeChanged(groupType)
                             Cell.bFuncs.UpdateAll(playerButton)
                         end
                     else
-                        -- Button not visible - the attribute driver may not have updated
-                        -- Force show the frame and retry
-                        soloFrame:Show()
+                        -- Button not visible - re-register the attribute driver to force a state refresh
+                        RegisterAttributeDriver(soloFrame, "state-visibility", "[@raid1,exists] hide;[@party1,exists] hide;[group] hide;show")
                         C_Timer.After(0.2, function()
                             if playerButton:IsVisible() then
                                 playerButton._updateRequired = 1

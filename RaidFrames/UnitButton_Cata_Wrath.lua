@@ -2854,7 +2854,7 @@ end
 local function UnitButton_OnEvent(self, event, unit, ...)
     -- print(event, self:GetName(), unit, self.states.displayedUnit, self.states.unit)
     -- if UnitExists(unit) and (UnitIsUnit(unit, self.states.displayedUnit) or UnitIsUnit(unit, self.states.unit)) then
-    if unit and (self.states.displayedUnit == unit or self.states.unit == unit or UnitIsUnit(unit, self.states.displayedUnit)) then
+    if type(unit) == "string" and (self.states.displayedUnit == unit or self.states.unit == unit or (type(self.states.displayedUnit) == "string" and UnitIsUnit(unit, self.states.displayedUnit))) then
         if  event == "UNIT_ENTERED_VEHICLE" or event == "UNIT_EXITED_VEHICLE" or event == "UNIT_CONNECTION" then
             self._updateRequired = 1
             self._powerUpdateRequired = 1
@@ -3039,6 +3039,10 @@ Cell.vars.names = {} -- name to unitid
 local ApplyClickCastingsOnLoad
 
 local function UnitButton_OnShow(self)
+    if not self:IsMouseEnabled() then
+        self:EnableMouse(true)
+    end
+
     self._updateRequired = 1 -- prevent UnitButton_UpdateAll twice. when convert party <-> raid, GROUP_ROSTER_UPDATE fired.
     self._powerUpdateRequired = 1
     UnitButton_RegisterEvents(self)
@@ -3930,6 +3934,10 @@ local DumbFunc = function() end
 
 function CellUnitButton_OnLoad(button)
     local name = button:GetName()
+
+    -- Keep mouse interaction explicitly enabled for header-generated secure buttons.
+    -- Some WotLK header update paths can leave buttons non-interactive in raid.
+    button:EnableMouse(true)
 
     --! WotLK 3.3.5a: Auto-register raid buttons created by SecureGroupHeader
     if name and name:find("CellRaidFrame") then
