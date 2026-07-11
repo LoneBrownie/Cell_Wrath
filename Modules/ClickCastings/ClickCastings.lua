@@ -583,11 +583,10 @@ local function ApplyClickCastings(b)
                 condition = F.IsResurrectionForDead(spellName) and ",dead" or ",nodead"
             end
 
-            -- ClassicAPI/Clique-style targeting: cast directly at @mouseover.
-            -- This avoids relying on secure placeholder rewrites (@cell -> @unit)
-            -- which can fail on some 3.3.5 backports.
-            -- Use legacy condition syntax on non-retail clients for max compatibility.
-            local unit = Cell.isRetail and "@mouseover" or "target=mouseover"
+            -- On classic clients, bind the macro to the clicked secure button's unit instead of
+            -- the global mouseover unit. This is more stable in raid frames where dense children
+            -- and rapid cursor movement can desync @mouseover from the actual clicked button.
+            local unit = Cell.isRetail and "@mouseover,exists" or "@cell,exists"
 
             -- "sMaRt" resurrection
             local sMaRt = ""
@@ -619,26 +618,21 @@ local function ApplyClickCastings(b)
                     b:SetAttribute(k, "macro")
                     local attr = string.gsub(k, "type", "macrotext")
                     b:SetAttribute(attr, "/tar ["..unit.."]\n/cast ["..unit..condition.."] "..spellName..sMaRt..fix)
+                    if not Cell.isRetail then UpdatePlaceholder(b, attr) end
                 end
             else
-                -- Clique-style default: use secure spell attributes for regular click-casts.
-                -- Only fall back to macro when extra conditional logic is required.
-                if sMaRt ~= "" or F.IsSoulstone(spellName) then
-                    for _, k in ipairs(bindKeys) do
-                        b:SetAttribute(k, "macro")
-                        local attr = string.gsub(k, "type", "macrotext")
-                        if F.IsSoulstone(spellName) then
-                            b:SetAttribute(attr, "/tar ["..unit.."]\n/cast ["..unit.."] "..spellName.."\n/targetlasttarget")
-                        else
-                            b:SetAttribute(attr, "/cast ["..unit..condition.."] "..spellName..sMaRt..fix)
-                        end
+                -- Always cast through an explicit mouseover condition on classic clients.
+                -- Direct secure spell bindings can still fall back to auto self-cast on some 3.3.5 clients,
+                -- which is most noticeable on cast-time spells.
+                for _, k in ipairs(bindKeys) do
+                    b:SetAttribute(k, "macro")
+                    local attr = string.gsub(k, "type", "macrotext")
+                    if F.IsSoulstone(spellName) then
+                        b:SetAttribute(attr, "/tar ["..unit.."]\n/cast ["..unit.."] "..spellName.."\n/targetlasttarget")
+                    else
+                        b:SetAttribute(attr, "/cast ["..unit..condition.."] "..spellName..sMaRt..fix)
                     end
-                else
-                    for _, k in ipairs(bindKeys) do
-                        b:SetAttribute(k, "spell")
-                        local attr = string.gsub(k, "type", "spell")
-                        b:SetAttribute(attr, spellName)
-                    end
+                    if not Cell.isRetail then UpdatePlaceholder(b, attr) end
                 end
             end
         elseif t[2] == "macro" then
@@ -673,8 +667,14 @@ function F.UpdateClickCastOnFrame(frame, snippet)
             useAnyDown = GetCVar("ActionButtonUseKeyDown") == "1"
         end
 
-        -- Register both directions to avoid client/CVar/backport mismatches.
-        frame:RegisterForClicks("AnyDown", "AnyUp")
+        -- Respect the client's secure click activation mode.
+        -- Registering both directions can retrigger casts on release,
+        -- which is especially problematic for channeled spells like Penance.
+        if useAnyDown then
+            frame:RegisterForClicks("AnyDown")
+        else
+            frame:RegisterForClicks("AnyUp")
+        end
         if frame.EnableMouseWheel then
             frame:EnableMouseWheel(true)
         end
