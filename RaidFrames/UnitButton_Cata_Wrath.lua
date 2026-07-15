@@ -2028,8 +2028,8 @@ local function UnitButton_UpdateHealPrediction(self)
 		local unitGUID = UnitGUID(unit)
 		if unitGUID then
 			local healAmount = HealComm:GetHealAmount(unitGUID, HealComm.ALL_HEALS) or 0
-			--local healModifier = HealComm:GetHealModifier(unitGUID) or 1
-			--value = healAmount * healModifier
+			local healModifier = HealComm:GetHealModifier(unitGUID) or 1
+			value = healAmount * healModifier
 		end
 	end
 
@@ -3199,6 +3199,25 @@ local function UnitButton_OnTick(self)
     self.__tickCount = e
 
     UnitButton_UpdateInRange(self)
+
+    --! WotLK 3.3.5a: UNIT_HEALTH_FREQUENT and UNIT_HEAL_PREDICTION don't exist on 3.3.5, and
+    --! UNIT_HEALTH is throttled by the server (worse in large raids), so bars can look stale.
+    --! Poll for changes here as a fallback for those missing frequent events. Change-detected,
+    --! so an unchanged unit costs only a couple of API reads and triggers no redraw.
+    if self._indicatorsReady and not self._updateRequired and self.states.displayedUnit then
+        local unit = self.states.displayedUnit
+        if UnitHealth(unit) ~= self.states.health or UnitHealthMax(unit) ~= self.states.healthMax then
+            UnitButton_UpdateHealth(self)
+            UnitButton_UpdateHealPrediction(self)
+            UnitButton_UpdateShieldAbsorbs(self)
+            UnitButton_UpdateHealAbsorbs(self, true)
+        end
+        if self._shouldShowPowerBar and (UnitPower(unit) ~= self.states.power or UnitPowerMax(unit) ~= self.states.powerMax) then
+            UnitButton_UpdatePowerStates(self)
+            UnitButton_UpdatePower(self)
+            UnitButton_UpdatePowerText(self)
+        end
+    end
 
     if self._updateRequired and self._indicatorsReady then
         self._updateRequired = nil

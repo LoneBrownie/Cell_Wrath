@@ -2483,9 +2483,12 @@ function F.IsInRange(unit, check)
     if UnitIsUnit("player", unit) then
         return true
 
-    elseif not check and F.UnitInGroup(unit) then
+    elseif not check and Cell.isRetail and F.UnitInGroup(unit) then
         -- NOTE: UnitInRange only works with group players/pets
         --! but not available for PLAYER PET when SOLO
+        --! Retail UnitInRange is accurate (~spell range). On classic (WotLK/ClassicAPI)
+        --! UnitInRange is a fixed ~28yd interact check, so fall through to the spell-based
+        --! path below (uses spell_friend/spell_dead/spell_pet) for correct 40yd healer range.
         local inRange, checked = UnitInRange(unit)
         if not checked then
             return F.IsInRange(unit, true)

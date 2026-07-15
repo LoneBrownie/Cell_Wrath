@@ -583,10 +583,11 @@ local function ApplyClickCastings(b)
                 condition = F.IsResurrectionForDead(spellName) and ",dead" or ",nodead"
             end
 
-            -- On classic clients, bind the macro to the clicked secure button's unit instead of
-            -- the global mouseover unit. This is more stable in raid frames where dense children
-            -- and rapid cursor movement can desync @mouseover from the actual clicked button.
-            local unit = Cell.isRetail and "@mouseover,exists" or "@cell,exists"
+            -- Cast at the live @mouseover unit on all clients. The previous classic path used a
+            -- baked "@cell" placeholder rewritten in _onenter; that placeholder failed to resolve
+            -- for cast-time/channeled spells, so autoSelfCast redirected the heal to the player.
+            -- Native @mouseover works reliably on 3.3.5 (AzerothCore) for cast-time spells.
+            local unit = "@mouseover,exists"
 
             -- "sMaRt" resurrection
             local sMaRt = ""
@@ -618,12 +619,11 @@ local function ApplyClickCastings(b)
                     b:SetAttribute(k, "macro")
                     local attr = string.gsub(k, "type", "macrotext")
                     b:SetAttribute(attr, "/tar ["..unit.."]\n/cast ["..unit..condition.."] "..spellName..sMaRt..fix)
-                    if not Cell.isRetail then UpdatePlaceholder(b, attr) end
                 end
             else
-                -- Always cast through an explicit mouseover condition on classic clients.
-                -- Direct secure spell bindings can still fall back to auto self-cast on some 3.3.5 clients,
-                -- which is most noticeable on cast-time spells.
+                -- Cast directly at @mouseover. No placeholder rewrite (UpdatePlaceholder) here:
+                -- leaving @mouseover literal lets the client resolve it live at cast time, which
+                -- is what makes cast-time/channeled mouseover casts land correctly.
                 for _, k in ipairs(bindKeys) do
                     b:SetAttribute(k, "macro")
                     local attr = string.gsub(k, "type", "macrotext")
@@ -632,7 +632,6 @@ local function ApplyClickCastings(b)
                     else
                         b:SetAttribute(attr, "/cast ["..unit..condition.."] "..spellName..sMaRt..fix)
                     end
-                    if not Cell.isRetail then UpdatePlaceholder(b, attr) end
                 end
             end
         elseif t[2] == "macro" then
