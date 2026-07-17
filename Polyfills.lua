@@ -517,6 +517,20 @@ if not UnitInPhase then
     end
 end
 
+-- IsSpellKnownOrOverridesKnown
+if not IsSpellKnownOrOverridesKnown then
+    -- Retail API; absent on 3.3.5a. Without this the call errors inside SPELLS_CHANGED,
+    -- which aborts before spell_friend resolves to a spell name, so F.IsInRange silently
+    -- degrades to CheckInteractDistance (~28yd) instead of the class's 40yd heal range.
+    -- IsSpellKnown is native here and reports old ranks correctly (IsSpellKnown(2050) -> true).
+    function IsSpellKnownOrOverridesKnown(spellId, isPetSpell)
+        if IsSpellKnown then
+            return IsSpellKnown(spellId, isPetSpell)
+        end
+        return GetSpellInfo(spellId) ~= nil
+    end
+end
+
 -- UnitGroupRolesAssigned
 if not UnitGroupRolesAssigned then
     -- WotLK 3.3.5a NATIVE API: returns THREE BOOLEANS (isTank, isHealer, isDamage)
