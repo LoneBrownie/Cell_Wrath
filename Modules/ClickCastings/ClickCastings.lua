@@ -270,11 +270,20 @@ if Cell.isRetail then
             end
         ]])
 
-        wrapFrame:WrapScript(b, "OnEnter", [[
-            -- print("OnEnter")
-            if mouseoverbutton then mouseoverbutton:ClearBindings() end --! NOTE: 鼠标放在过远单位上->被挡住->移走->移至可用单位再移出，会发现之前的不可用单位的按键绑定仍未取消
-            mouseoverbutton = self
-        ]])
+        -- WrapScript accumulates wrappers; only wrap OnEnter once per button (see classic path below).
+        if not b._cellOnEnterWrapped then
+            b._cellOnEnterWrapped = true
+            wrapFrame:WrapScript(b, "OnEnter", [[
+                -- print("OnEnter")
+                if mouseoverbutton then mouseoverbutton:ClearBindings() end --! NOTE: 鼠标放在过远单位上->被挡住->移走->移至可用单位再移出，会发现之前的不可用单位的按键绑定仍未取消
+                mouseoverbutton = self
+            ]])
+
+            --! Clear tracked mouseoverbutton on hide to avoid a stale "Invalid frame handle" (see classic path).
+            wrapFrame:WrapScript(b, "OnHide", [[
+                if mouseoverbutton == self then mouseoverbutton = nil end
+            ]])
+        end
 
         --! NOTE: if another frame shows in front of b, _onleave will NOT trigger. Use WrapScript to solve this issue.
         b:SetAttribute("_onleave", [[
@@ -342,22 +351,38 @@ else
             end
         ]])
 
-        wrapFrame:WrapScript(b, "OnEnter", [[
-            -- print("OnEnter")
-            if mouseoverbutton then
-                --! NOTE: 鼠标放在过远单位上->被挡住->移走->移至可用单位再移出，会发现之前的不可用单位的按键绑定仍未取消
-                mouseoverbutton:ClearBindings()
+        -- WrapScript ACCUMULATES: each call nests another wrapper around OnEnter and never
+        -- unwraps. SetBindingClicks runs on every button OnShow (via ApplyClickCastingsOnLoad),
+        -- so in a raid the wrappers stack until entering a frame overflows the C stack
+        -- ("chunk has too many syntax levels"), poisoning the restricted environment and killing
+        -- all mouseover until /reload. Wrap each button's OnEnter exactly once.
+        if not b._cellOnEnterWrapped then
+            b._cellOnEnterWrapped = true
+            wrapFrame:WrapScript(b, "OnEnter", [[
+                -- print("OnEnter")
+                if mouseoverbutton then
+                    --! NOTE: 鼠标放在过远单位上->被挡住->移走->移至可用单位再移出，会发现之前的不可用单位的按键绑定仍未取消
+                    mouseoverbutton:ClearBindings()
 
-                --! vehicle (previous button)
-                local oldUnit = mouseoverbutton:GetAttribute("oldUnit")
-                if oldUnit then
-                    -- print("wrap restore unit")
-                    mouseoverbutton:SetAttribute("unit", oldUnit)
-                    mouseoverbutton:SetAttribute("oldUnit", nil)
+                    --! vehicle (previous button)
+                    local oldUnit = mouseoverbutton:GetAttribute("oldUnit")
+                    if oldUnit then
+                        -- print("wrap restore unit")
+                        mouseoverbutton:SetAttribute("unit", oldUnit)
+                        mouseoverbutton:SetAttribute("oldUnit", nil)
+                    end
                 end
-            end
-            mouseoverbutton = self
-        ]])
+                mouseoverbutton = self
+            ]])
+
+            --! Clear the tracked mouseoverbutton when that button hides (e.g. roster change),
+            --! otherwise it holds a stale frame handle and a later click/state poke fails with
+            --! "Invalid frame handle". Runs in wrapFrame's env so it can see mouseoverbutton.
+            --! OnHide (not OnLeave): the state-driver cleanup relies on it persisting after leave.
+            wrapFrame:WrapScript(b, "OnHide", [[
+                if mouseoverbutton == self then mouseoverbutton = nil end
+            ]])
+        end
 
         --! NOTE: if another frame shows in front of b, _onleave will NOT trigger. Use WrapScript to solve this issue.
         b:SetAttribute("_onleave", [[
